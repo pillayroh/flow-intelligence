@@ -8,6 +8,7 @@ import { Recorder } from "./recorder";
 import { registerTelemetry } from "./telemetry";
 import { EsmSampler } from "./esm/sampler";
 import { installHooks, uninstallHooks } from "./hooksBootstrap";
+import { installClaudeHooks, uninstallClaudeHooks } from "./claudeBootstrap";
 import { StatsHub } from "./stats";
 import { DashboardProvider, DashboardHost } from "./panel/dashboard";
 import { EsmResponse } from "./types";
@@ -119,6 +120,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     // installed after enrollment) and the forwarder stays up to date.
     try {
       installHooks(ctx);
+      installClaudeHooks();
     } catch (err) {
       log(`hook self-heal failed: ${String(err)}`);
     }
@@ -175,6 +177,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
       await store.setEnabled(false);
       patchForwarderConfig({ enabled: false });
       uninstallHooks();
+      uninstallClaudeHooks();
       if (runtime) {
         await runtime.dispose();
         runtime = undefined;

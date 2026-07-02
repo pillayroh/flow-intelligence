@@ -24,7 +24,7 @@ function quote(p: string): string {
 //   3. Cursor's own bundled Node via Electron (ELECTRON_RUN_AS_NODE) — always
 //      present, so participants need NO separate runtime installed.
 // Absolute paths are preferred because the hook shell's PATH may be minimal.
-function resolveRuntimePrefix(): string {
+export function resolveRuntimePrefix(): string {
   const home = os.homedir();
   const direct = [
     path.join(home, ".bun", "bin", "bun"),
@@ -89,6 +89,17 @@ function managedEntries(): Record<string, HookEntry[]> {
 
 function cursorDir(): string {
   return path.join(os.homedir(), ".cursor");
+}
+
+// Canonical absolute path to the installed forwarder. Reused by the Claude Code
+// adapter, whose hooks run from the project cwd and therefore need an absolute
+// path (Cursor user hooks, by contrast, run from ~/.cursor and use a relative one).
+export function forwarderPath(): string {
+  return path.join(cursorDir(), "hooks", "forwarder.mjs");
+}
+
+export function quoteRuntimePath(p: string): string {
+  return p.includes(" ") ? `"${p}"` : p;
 }
 
 // Copies the bundled forwarder into ~/.cursor/hooks/ and merges our hook

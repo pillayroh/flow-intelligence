@@ -56,6 +56,10 @@ Deno.serve(async (req) => {
   let humanChars = 0;
   const ai = { prompts: 0, messages: 0, agent_edits: 0, tab_edits: 0, tool_uses: 0, verifications: 0 };
   const human = { edit_bursts: 0, commits: 0, focus_switches: 0 };
+  // Tool-agnostic behavioral estimate of AI-inserted code (from edit_insert
+  // signals). Kept separate from the measured collaboration numbers above so
+  // analysis can treat measured vs estimated distinctly.
+  const estimate = { large_inserts: 0, insert_chars: 0 };
 
   for (const e of evs) {
     byType[e.event_type] = (byType[e.event_type] ?? 0) + 1;
@@ -69,6 +73,7 @@ Deno.serve(async (req) => {
       case "tool_pre": ai.tool_uses++; break;
       case "shell_pre": if (p.command_class === "test") ai.verifications++; break;
       case "edit_burst": human.edit_bursts++; humanChars += num(p.added_chars); break;
+      case "edit_insert": estimate.large_inserts++; estimate.insert_chars += num(p.added_chars); break;
       case "git_commit": human.commits++; break;
       case "focus_switch": human.focus_switches++; break;
     }
@@ -95,6 +100,7 @@ Deno.serve(async (req) => {
     },
     ai,
     human,
+    estimate,
     collaboration: {
       ai_chars: aiChars,
       human_chars: humanChars,

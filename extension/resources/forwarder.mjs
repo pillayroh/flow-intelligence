@@ -32,6 +32,9 @@ main().catch(() => process.exit(0));
 
 async function main() {
   const eventType = process.argv[2] || "unknown";
+  // Second arg tags which agent produced the event (e.g. "cursor",
+  // "claude_code"). Defaults to cursor for backward compatibility.
+  const agent = process.argv[3] || "cursor";
   const raw = readStdin();
   let input = {};
   try {
@@ -58,6 +61,7 @@ async function main() {
   }
 
   const payload = buildPayload(eventType, input);
+  payload.agent = agent;
 
   const event = {
     ts: new Date().toISOString(),
@@ -119,14 +123,18 @@ function buildPayload(eventType, input) {
  * Helpers
  * ------------------------------------------------------------------------ */
 
-// afterFileEdit / afterTabFileEdit deliver { file_path, edits: [{ old_string,
-// new_string, ... }] }. We count characters only (never the text itself) so
-// the dashboard can attribute AI-written vs human-written code.
+// Character-only accounting of an AI file edit (never the text itself), so the
+// dashboard can attribute AI-written vs human-written code. Handles two shapes:
+//   - Cursor afterFileEdit / afterTabFileEdit: { file_path, edits:[{old_string,new_string}] }
+//   - Claude Code PostToolUse: { tool_name, tool_input:{ file_path, old_string,
+//     new_string | content | edits:[...] } }  (Edit / Write / MultiEdit tools)
 function editPayload(input) {
-  const edits = pick(input, ["edits", "changes", "hunks"]);
+  const ti = input && typeof input.tool_input === "object" && input.tool_input ? input.tool_input : null;
+  const src = ti || input;
   let added = 0;
   let removed = 0;
   let count = 0;
+  const edits = pick(src, ["edits", "changes", "hunks"]);
   if (Array.isArray(edits)) {
     count = edits.length;
     for (const e of edits) {
@@ -137,9 +145,22 @@ function editPayload(input) {
         if (typeof e.old_line === "string") removed += e.old_line.length;
       }
     }
+  } else {
+    const ns = pick(src, ["new_string", "new_text"]);
+    const os2 = pick(src, ["old_string", "old_text"]);
+    const content = pick(src, ["content", "contents", "file_text"]);
+    if (typeof ns === "string") {
+      added += ns.length;
+      count = 1;
+    }
+    if (typeof os2 === "string") removed += os2.length;
+    if (added === 0 && typeof content === "string") {
+      added += content.length;
+      count = 1;
+    }
   }
   return {
-    file_ext: fileExt(pick(input, ["file_path", "path", "file", "filePath", "uri"])),
+    file_ext: fileExt(pick(src, ["file_path", "path", "file", "filePath", "uri"])),
     added_chars: added,
     removed_chars: removed,
     edit_count: count || 1,
@@ -151,8 +172,8 @@ function pick(obj, keys) {
   for (const k of keys) {
     if (obj[k] !== undefined) return obj[k];
   }
-  // one level deep (some hooks nest under a payload/data field)
-  for (const nestKey of ["payload", "data", "input", "event"]) {
+  // one level deep (some hooks nest under a payload/data/tool_input field)
+  for (const nestKey of ["payload", "data", "input", "event", "tool_input"]) {
     const nested = obj[nestKey];
     if (nested && typeof nested === "object") {
       for (const k of keys) {
