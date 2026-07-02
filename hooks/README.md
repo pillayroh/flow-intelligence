@@ -37,11 +37,15 @@ Manual install (user-level, applies across all your Cursor projects):
 
 ## Requirements
 
-- `bun` must be installed (verify with `command -v bun`). The companion extension
-  resolves Bun's absolute path at install time and writes it into the hook
-  commands, so hooks work even if the hook shell's PATH lacks `~/.bun/bin`. For a
-  manual install, ensure `bun` is on PATH or edit the command paths in
-  `~/.cursor/hooks.json` to Bun's absolute path.
+- No separate runtime install is required. The forwarder uses only `node:*`
+  built-ins, so it runs under **Bun or Node**. The companion extension resolves a
+  runtime at install time (prefers `bun`, then `node`) and writes its absolute
+  path into the hook commands, so hooks work even if the hook shell's PATH is
+  minimal. If neither Bun nor Node is found, it falls back to Cursor's own
+  bundled Node (via `ELECTRON_RUN_AS_NODE`), so hooks still work out of the box.
+- Note: these hooks only observe **Cursor's native agent and Tab**. A separate
+  agent such as Claude Code runs its own loop and its own hook system, so its
+  activity is not captured here.
 
 ## What is captured
 

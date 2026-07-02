@@ -5,24 +5,46 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { log } from "./logger";
 
-// Resolve an absolute path to the Bun runtime so hooks work even when the hook
-// shell's PATH does not include ~/.bun/bin. Falls back to bare "bun".
-function resolveBun(): string {
-  const candidates = [
-    path.join(os.homedir(), ".bun", "bin", "bun"),
+function existsSafe(p: string): boolean {
+  try {
+    return fs.existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+function quote(p: string): string {
+  return p.includes(" ") ? `"${p}"` : p;
+}
+
+// Resolve a runtime command prefix for the forwarder. The forwarder uses only
+// node:* built-ins, so it runs under Bun OR Node. We try, in order:
+//   1. Bun (fast startup) at common absolute paths, then PATH.
+//   2. Node at common absolute paths, then PATH.
+//   3. Cursor's own bundled Node via Electron (ELECTRON_RUN_AS_NODE) — always
+//      present, so participants need NO separate runtime installed.
+// Absolute paths are preferred because the hook shell's PATH may be minimal.
+function resolveRuntimePrefix(): string {
+  const home = os.homedir();
+  const direct = [
+    path.join(home, ".bun", "bin", "bun"),
     "/opt/homebrew/bin/bun",
     "/usr/local/bin/bun",
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
   ];
-  for (const c of candidates) {
+  for (const c of direct) {
+    if (existsSafe(c)) return quote(c);
+  }
+  for (const bin of ["bun", "node"]) {
     try {
-      if (fs.existsSync(c)) return c;
+      const found = execSync(`command -v ${bin}`, { encoding: "utf8" }).trim();
+      if (found) return quote(found);
     } catch { /* ignore */ }
   }
-  try {
-    const found = execSync("command -v bun", { encoding: "utf8" }).trim();
-    if (found) return found;
-  } catch { /* ignore */ }
-  return "bun";
+  // Last resort: run the extension host's own Node binary as a plain Node.
+  return `ELECTRON_RUN_AS_NODE=1 ${quote(process.execPath)}`;
 }
 
 // The hook entries Flow Intelligence manages. Kept identical (in spirit) to
@@ -41,8 +63,7 @@ interface HooksFile {
 }
 
 function managedEntries(): Record<string, HookEntry[]> {
-  const bun = resolveBun();
-  const runtime = bun.includes(" ") ? `"${bun}"` : bun;
+  const runtime = resolveRuntimePrefix();
   const cmd = (arg: string) => `${runtime} hooks/forwarder.mjs ${arg}`;
   return {
     beforeSubmitPrompt: [{ command: cmd("prompt"), matcher: "UserPromptSubmit", _fi: FI_TAG }],

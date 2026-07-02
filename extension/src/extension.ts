@@ -7,7 +7,7 @@ import { SessionManager } from "./session";
 import { Recorder } from "./recorder";
 import { registerTelemetry } from "./telemetry";
 import { EsmSampler } from "./esm/sampler";
-import { uninstallHooks } from "./hooksBootstrap";
+import { installHooks, uninstallHooks } from "./hooksBootstrap";
 import { StatsHub } from "./stats";
 import { DashboardProvider, DashboardHost } from "./panel/dashboard";
 import { EsmResponse } from "./types";
@@ -88,8 +88,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     }),
   );
 
+  // Always-visible entry point in the bottom status bar. A click opens the
+  // dashboard directly (the common case); full options live in the Command
+  // Palette under "Flow Intelligence:" and the dashboard itself.
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.command = "flowIntel.status";
+  statusBar.command = "flowIntel.open";
   ctx.subscriptions.push(statusBar);
 
   const refreshStatus = async () => {
@@ -110,7 +113,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   };
 
   const startIfEnrolled = async () => {
-    if ((await store.isEnrolled()) && !runtime) {
+    if (!(await store.isEnrolled())) return;
+    // Self-heal: re-install hooks and refresh the forwarder on every launch so
+    // the runtime path is re-resolved (fixes cases where the JS runtime was
+    // installed after enrollment) and the forwarder stays up to date.
+    try {
+      installHooks(ctx);
+    } catch (err) {
+      log(`hook self-heal failed: ${String(err)}`);
+    }
+    if (!runtime) {
       runtime = new Runtime(ctx, store, stats, dashboard);
       runtime.start();
     }
