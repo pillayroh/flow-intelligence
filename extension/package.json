@@ -2,7 +2,7 @@
   "name": "flow-intelligence",
   "displayName": "Flow Intelligence",
   "description": "Research telemetry for understanding human-AI collaboration flow in Cursor. Metadata only; no code or prompt text is ever collected.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "flow-intelligence",
   "license": "MIT",
   "icon": "resources/icon.png",
