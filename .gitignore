@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+extension/out/
+*.vsix
+
+# Dev artifacts
+tools/local-ingest.log
+
+# Supabase local
+server/supabase/.branches/
+server/supabase/.temp/
+
+# OS / editor
+.DS_Store
+*.log
+
+# Local connection secrets (anon key / project URL)
+.vscode/settings.json

@@ -1,0 +1,103 @@
+{
+  "name": "flow-intelligence",
+  "displayName": "Flow Intelligence",
+  "description": "Research telemetry for understanding human-AI collaboration flow in Cursor. Metadata only; no code or prompt text is ever collected.",
+  "version": "0.1.3",
+  "publisher": "flow-intelligence",
+  "license": "MIT",
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pillayroh/flow-intelligence"
+  },
+  "keywords": ["flow", "productivity", "human-ai", "collaboration", "telemetry", "research", "cursor"],
+  "galleryBanner": {
+    "color": "#f4ece0",
+    "theme": "light"
+  },
+  "categories": ["Other", "Data Science"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "flowIntel",
+          "title": "Flow Intelligence",
+          "icon": "resources/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "flowIntel": [
+        {
+          "type": "webview",
+          "id": "flowIntel.dashboard",
+          "name": "Flow"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "flowIntel.enroll", "title": "Flow Intelligence: Enroll in Study" },
+      { "command": "flowIntel.open", "title": "Flow Intelligence: Open Dashboard" },
+      { "command": "flowIntel.checkIn", "title": "Flow Intelligence: Flow Check-in" },
+      { "command": "flowIntel.status", "title": "Flow Intelligence: Show Status" },
+      { "command": "flowIntel.pause", "title": "Flow Intelligence: Pause Collection" },
+      { "command": "flowIntel.resume", "title": "Flow Intelligence: Resume Collection" },
+      { "command": "flowIntel.withdraw", "title": "Flow Intelligence: Withdraw from Study" }
+    ],
+    "configuration": {
+      "title": "Flow Intelligence",
+      "properties": {
+        "flowIntel.supabaseUrl": {
+          "type": "string",
+          "default": "https://uluhtqttiuuatxxgahre.supabase.co",
+          "description": "Base Supabase project URL, e.g. https://<ref>.supabase.co"
+        },
+        "flowIntel.supabaseAnonKey": {
+          "type": "string",
+          "default": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVsdWh0cXR0aXV1YXR4eGdhaHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5NTE2MTIsImV4cCI6MjA5ODUyNzYxMn0.3Sjj2bqOsDHHfdmRKsdiwoXG8vs5HeTrhEKNCQZLdsE",
+          "description": "Supabase anon key, sent as the apikey header when calling Edge Functions."
+        },
+        "flowIntel.esm.minActiveMinutes": {
+          "type": "number",
+          "default": 30,
+          "description": "Minimum active-coding minutes between flow check-ins."
+        },
+        "flowIntel.esm.maxActiveMinutes": {
+          "type": "number",
+          "default": 90,
+          "description": "Maximum active-coding minutes between flow check-ins."
+        },
+        "flowIntel.esm.dailyCap": {
+          "type": "number",
+          "default": 8,
+          "description": "Maximum number of scheduled flow check-ins per day."
+        },
+        "flowIntel.idleThresholdMinutes": {
+          "type": "number",
+          "default": 5,
+          "description": "Inactivity gap that ends the current coding session."
+        },
+        "flowIntel.flushIntervalSeconds": {
+          "type": "number",
+          "default": 30,
+          "description": "How often buffered telemetry is sent to the ingest endpoint."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      { "command": "bun hooks/forwarder.mjs prompt", "matcher": "UserPromptSubmit" }
+    ],
+    "afterAgentResponse": [
+      { "command": "bun hooks/forwarder.mjs agent_response" }
+    ],
+    "afterAgentThought": [
+      { "command": "bun hooks/forwarder.mjs agent_thought" }
+    ],
+    "afterFileEdit": [
+      { "command": "bun hooks/forwarder.mjs agent_edit" }
+    ],
+    "afterTabFileEdit": [
+      { "command": "bun hooks/forwarder.mjs tab_edit" }
+    ],
+    "preToolUse": [
+      { "command": "bun hooks/forwarder.mjs tool_pre" }
+    ],
+    "postToolUse": [
+      { "command": "bun hooks/forwarder.mjs tool_post" }
+    ],
+    "beforeShellExecution": [
+      { "command": "bun hooks/forwarder.mjs shell_pre" }
+    ],
+    "afterShellExecution": [
+      { "command": "bun hooks/forwarder.mjs shell_post" }
+    ],
+    "subagentStart": [
+      { "command": "bun hooks/forwarder.mjs subagent_start" }
+    ],
+    "subagentStop": [
+      { "command": "bun hooks/forwarder.mjs subagent_stop" }
+    ],
+    "stop": [
+      { "command": "bun hooks/forwarder.mjs stop" }
+    ],
+    "preCompact": [
+      { "command": "bun hooks/forwarder.mjs compact" }
+    ],
+    "sessionStart": [
+      { "command": "bun hooks/forwarder.mjs session_start" }
+    ],
+    "sessionEnd": [
+      { "command": "bun hooks/forwarder.mjs session_end" }
+    ]
+  }
+}

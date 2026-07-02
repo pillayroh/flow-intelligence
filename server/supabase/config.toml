@@ -1,0 +1,15 @@
+project_id = "flow-intelligence"
+
+[functions.enroll]
+# Enrollment is gated by a study code + our own token issuance, not a Supabase
+# JWT, so we disable JWT verification and authenticate at the app layer.
+verify_jwt = false
+
+[functions.ingest]
+# Ingest authenticates with the opaque per-participant token we issue at
+# enrollment (Bearer token), verified against participants.token_hash.
+verify_jwt = false
+
+[functions.summary]
+# Dashboard read path. Same per-participant token auth as ingest.
+verify_jwt = false
