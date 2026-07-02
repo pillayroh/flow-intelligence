@@ -6,7 +6,7 @@ functions; RLS denies direct client access.
 
 ## Layout
 
-- `supabase/migrations/` — SQL schema (`0001_init.sql`) and example seed (`0002_seed_example.sql`).
+- `supabase/migrations/` — SQL schema (`0001_init.sql`).
 - `supabase/functions/enroll/` — issues a per-participant ingest token against a study code.
 - `supabase/functions/ingest/` — authenticates the token and stores events + ESM responses.
 - `supabase/functions/_shared/` — CORS, token hashing, payload sanitation.
@@ -22,11 +22,12 @@ functions; RLS denies direct client access.
 supabase db push
 ```
 
-4. Seed at least one study code (edit `0002_seed_example.sql` first, or run SQL in the dashboard):
+4. Seed at least one study code by running SQL in the Supabase dashboard.
+   Keep your real code out of version control — pick your own value:
 
 ```sql
 insert into study_codes (code, label, active, max_participants)
-values ('PILOT-2026', 'Pilot cohort', true, 30);
+values ('<YOUR-STUDY-CODE>', 'Pilot cohort', true, 30);
 ```
 
 5. Deploy the functions:
