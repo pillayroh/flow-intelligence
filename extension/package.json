@@ -2,7 +2,7 @@
   "name": "flow-intelligence",
   "displayName": "Flow Intelligence",
   "description": "Research telemetry for understanding human-AI collaboration flow in Cursor. Metadata only; no code or prompt text is ever collected.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "flow-intelligence",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -64,12 +64,12 @@
         },
         "flowIntel.esm.minActiveMinutes": {
           "type": "number",
-          "default": 30,
+          "default": 15,
           "description": "Minimum active-coding minutes between flow check-ins."
         },
         "flowIntel.esm.maxActiveMinutes": {
           "type": "number",
-          "default": 90,
+          "default": 30,
           "description": "Maximum active-coding minutes between flow check-ins."
         },
         "flowIntel.esm.dailyCap": {
@@ -79,7 +79,7 @@
         },
         "flowIntel.idleThresholdMinutes": {
           "type": "number",
-          "default": 5,
+          "default": 10,
           "description": "Inactivity gap that ends the current coding session."
         },
         "flowIntel.flushIntervalSeconds": {

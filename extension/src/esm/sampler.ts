@@ -7,6 +7,15 @@ export interface CheckInRequester {
   requestCheckIn(trigger: "scheduled" | "manual"): void;
 }
 
+// Persist the scheduler's progress toward the next prompt so it accumulates
+// across editor restarts instead of resetting to zero each launch (which, with
+// the active-time gate, meant scheduled check-ins almost never fired).
+const SAMPLER_STATE_KEY = "flowIntel.esmSamplerState";
+interface SamplerState {
+  activeMsAtLastPrompt: number;
+  targetMs: number;
+}
+
 // Experience-sampling scheduler. Decides WHEN a scheduled flow check-in should
 // appear (gated by active-coding time, capped per day) and asks the requester
 // (the dashboard) to present it. The actual survey UI + submission live in the
@@ -22,7 +31,16 @@ export class EsmSampler {
     private readonly sessions: SessionManager,
     private readonly requester: CheckInRequester,
   ) {
-    this.resetTarget();
+    const saved = ctx.globalState.get<SamplerState>(SAMPLER_STATE_KEY);
+    if (saved && typeof saved.targetMs === "number" && saved.targetMs > 0) {
+      this.targetMs = saved.targetMs;
+      this.activeMsAtLastPrompt =
+        typeof saved.activeMsAtLastPrompt === "number"
+          ? saved.activeMsAtLastPrompt
+          : this.sessions.getActiveMs();
+    } else {
+      this.resetTarget();
+    }
   }
 
   start(): void {
@@ -36,6 +54,14 @@ export class EsmSampler {
     const minutes = min + Math.random() * (max - min);
     this.targetMs = minutes * 60_000;
     this.activeMsAtLastPrompt = this.sessions.getActiveMs();
+    this.persist();
+  }
+
+  private persist(): void {
+    void this.ctx.globalState.update(SAMPLER_STATE_KEY, {
+      activeMsAtLastPrompt: this.activeMsAtLastPrompt,
+      targetMs: this.targetMs,
+    } satisfies SamplerState);
   }
 
   private tick(): void {

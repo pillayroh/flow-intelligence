@@ -139,10 +139,13 @@ function editPayload(input) {
     count = edits.length;
     for (const e of edits) {
       if (e && typeof e === "object") {
+        // Tab edits (afterTabFileEdit) carry BOTH new_string and new_line for
+        // the same change; prefer the *_string form and only fall back to the
+        // *_line form so characters aren't double-counted.
         if (typeof e.new_string === "string") added += e.new_string.length;
+        else if (typeof e.new_line === "string") added += e.new_line.length;
         if (typeof e.old_string === "string") removed += e.old_string.length;
-        if (typeof e.new_line === "string") added += e.new_line.length;
-        if (typeof e.old_line === "string") removed += e.old_line.length;
+        else if (typeof e.old_line === "string") removed += e.old_line.length;
       }
     }
   } else {

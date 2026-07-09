@@ -29,8 +29,8 @@ class Runtime implements DashboardHost {
     stats: StatsHub,
     private readonly dashboard: DashboardProvider,
   ) {
-    this.transport = new Transport(ctx, store, () => this.sessions.currentSession(), stats);
-    this.sessions = new SessionManager(this.transport);
+    this.transport = new Transport(ctx, store, () => this.sessions.sessionForReport(), stats);
+    this.sessions = new SessionManager(ctx, this.transport);
     const recorder = new Recorder(this.transport, this.sessions);
     this.sampler = new EsmSampler(ctx, store, this.sessions, this.dashboard);
     this.disposables.push(...registerTelemetry(recorder, this.sessions));

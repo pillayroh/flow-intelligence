@@ -26,10 +26,10 @@ export function getSettings(): Settings {
   return {
     supabaseUrl: (c.get<string>("supabaseUrl") ?? "").replace(/\/+$/, ""),
     supabaseAnonKey: c.get<string>("supabaseAnonKey") ?? "",
-    esmMinActiveMinutes: c.get<number>("esm.minActiveMinutes") ?? 30,
-    esmMaxActiveMinutes: c.get<number>("esm.maxActiveMinutes") ?? 90,
+    esmMinActiveMinutes: c.get<number>("esm.minActiveMinutes") ?? 15,
+    esmMaxActiveMinutes: c.get<number>("esm.maxActiveMinutes") ?? 30,
     esmDailyCap: c.get<number>("esm.dailyCap") ?? 8,
-    idleThresholdMinutes: c.get<number>("idleThresholdMinutes") ?? 5,
+    idleThresholdMinutes: c.get<number>("idleThresholdMinutes") ?? 10,
     flushIntervalSeconds: c.get<number>("flushIntervalSeconds") ?? 30,
   };
 }

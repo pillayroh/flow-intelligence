@@ -88,12 +88,29 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
       void vscode.window.showInformationMessage("Flow Intelligence: enroll first to check in.");
       return;
     }
+    if (trigger === "scheduled") {
+      // A scheduled prompt should be noticeable but not hijack the editor: show
+      // a dismissible notification with an action, and only reveal the survey
+      // card if the participant opts in. (The old 6s status-bar flash was easy
+      // to miss, which suppressed the scheduled response rate.)
+      void vscode.window
+        .showInformationMessage(
+          "Flow Intelligence: got a moment to rate your current flow?",
+          "Check in",
+          "Not now",
+        )
+        .then((choice) => {
+          if (choice === "Check in") this.deliverCheckIn("scheduled");
+        });
+      return;
+    }
+    this.deliverCheckIn(trigger);
+  }
+
+  private deliverCheckIn(trigger: "scheduled" | "manual"): void {
     this.pendingCheckin = trigger;
     // Reveal our view so the card is visible, then deliver it.
     void vscode.commands.executeCommand(`${DashboardProvider.viewId}.focus`);
-    if (trigger === "scheduled") {
-      void vscode.window.setStatusBarMessage("$(feedback) Flow check-in ready", 6000);
-    }
     this.flushPending();
   }
 

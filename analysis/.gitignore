@@ -1,0 +1,4 @@
+# Secrets and pulled data never leave the machine.
+.env
+data/
+node_modules/
