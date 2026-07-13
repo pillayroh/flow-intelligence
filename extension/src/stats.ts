@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { EsmResponse, TelemetryEvent } from "./types";
+import { MirrorStore } from "./mirror/store";
 
 export interface LiveSnapshot {
   by_type: Record<string, number>;
@@ -10,6 +11,13 @@ export interface LiveSnapshot {
     focus_switches: number;
     commits: number;
   };
+  // Estimated AI contribution from the tool-agnostic edit_insert signal (large
+  // atomic insertions). Available locally without hooks; used by the Mirror.
+  ai_estimate: {
+    inserts: number;
+    added_chars: number;
+  };
+  languages: Record<string, number>; // added_chars by language (for "top language")
   last_esm: EsmResponse | null;
   updated_at: string;
 }
@@ -26,11 +34,17 @@ export class StatsHub {
     focus_switches: 0,
     commits: 0,
   };
+  private aiEstimate = { inserts: 0, added_chars: 0 };
+  private languages: Record<string, number> = {};
   private lastEsm: EsmResponse | null = null;
 
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private throttle: NodeJS.Timeout | undefined;
+
+  // The optional mirror store persists these signals across sessions so the
+  // Mirror can reflect a trailing multi-day window.
+  constructor(private readonly mirror?: MirrorStore) {}
 
   observe(event: TelemetryEvent): void {
     this.byType[event.event_type] = (this.byType[event.event_type] ?? 0) + 1;
@@ -40,15 +54,29 @@ export class StatsHub {
         this.human.edit_bursts += 1;
         this.human.added_chars += n(p.added_chars);
         this.human.removed_chars += n(p.removed_chars);
+        this.addLanguage(event.payload.language, n(p.added_chars));
+        this.mirror?.addTyped(n(p.added_chars), n(p.removed_chars), event.payload.language);
+        break;
+      case "edit_insert":
+        this.aiEstimate.inserts += 1;
+        this.aiEstimate.added_chars += n(p.added_chars);
+        this.mirror?.addAiInsert(n(p.added_chars));
         break;
       case "focus_switch":
         this.human.focus_switches += 1;
+        this.mirror?.addFocusSwitch();
         break;
       case "git_commit":
         this.human.commits += 1;
+        this.mirror?.addCommit();
         break;
     }
     this.fire();
+  }
+
+  private addLanguage(lang: unknown, chars: number): void {
+    if (typeof lang !== "string" || !lang || chars <= 0) return;
+    this.languages[lang] = (this.languages[lang] ?? 0) + chars;
   }
 
   observeEsm(resp: EsmResponse): void {
@@ -60,6 +88,8 @@ export class StatsHub {
     return {
       by_type: { ...this.byType },
       human: { ...this.human },
+      ai_estimate: { ...this.aiEstimate },
+      languages: { ...this.languages },
       last_esm: this.lastEsm,
       updated_at: new Date().toISOString(),
     };

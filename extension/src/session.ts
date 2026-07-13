@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { SessionInfo, TelemetryEvent } from "./types";
 import { Transport } from "./transport";
 import { getSettings, patchForwarderConfig } from "./config";
+import { MirrorStore } from "./mirror/store";
 import { log } from "./logger";
 
 // Cumulative active-coding time is persisted so the ESM scheduler's countdown
@@ -27,6 +28,7 @@ export class SessionManager {
   constructor(
     private readonly ctx: vscode.ExtensionContext,
     private readonly transport: Transport,
+    private readonly mirror?: MirrorStore,
   ) {
     this.activeMs = ctx.globalState.get<number>(ACTIVE_MS_KEY) ?? 0;
   }
@@ -42,7 +44,9 @@ export class SessionManager {
     if (!this.session) {
       this.beginSession(now);
     } else if (this.lastActivity && now - this.lastActivity < idleMs) {
-      this.activeMs += now - this.lastActivity;
+      const delta = now - this.lastActivity;
+      this.activeMs += delta;
+      this.mirror?.addActive(delta);
     }
     this.lastActivity = now;
   }

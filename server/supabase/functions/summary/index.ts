@@ -87,6 +87,10 @@ Deno.serve(async (req) => {
   }
 
   const collabTotal = aiChars + humanChars;
+  // When hooks haven't produced measured AI chars yet, fall back to the
+  // extension's edit_insert estimate so Overall isn't blank after enroll.
+  const displayAiChars = aiChars > 0 ? aiChars : estimate.insert_chars;
+  const displayTotal = displayAiChars + humanChars;
   const recentEsm = (esm ?? []).slice().reverse();
 
   return json({
@@ -102,9 +106,10 @@ Deno.serve(async (req) => {
     human,
     estimate,
     collaboration: {
-      ai_chars: aiChars,
+      ai_chars: displayAiChars,
       human_chars: humanChars,
-      ai_ratio: collabTotal > 0 ? aiChars / collabTotal : 0,
+      ai_ratio: displayTotal > 0 ? displayAiChars / displayTotal : 0,
+      measured_ai_chars: aiChars,
     },
     by_type: byType,
     esm: recentEsm,

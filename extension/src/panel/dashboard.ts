@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { SessionInfo } from "../types";
 import { ParticipantStore } from "../config";
 import { StatsHub } from "../stats";
+import { MirrorStore } from "../mirror/store";
+import { computeMirror } from "../mirror/archetype";
 import { fetchSummary } from "../summary";
 import { getHtml } from "./html";
 
@@ -17,12 +19,33 @@ export interface DashboardHost {
 
 const SUMMARY_POLL_MS = 45_000;
 
+function localOverall(mirror: MirrorStore) {
+  const m = mirror.getInput(7);
+  const total = m.humanTypedChars + m.aiInsertChars;
+  return {
+    scope: "local" as const,
+    scopeLabel: "Last 7 days",
+    human_chars: m.humanTypedChars,
+    ai_chars: m.aiInsertChars,
+    ai_ratio: total > 0 ? m.aiInsertChars / total : 0,
+    edit_bursts: null as number | null,
+    focus_switches: m.focusSwitches,
+    commits: m.commits,
+    prompts: null as number | null,
+    agent_edits: null as number | null,
+    tab_edits: null as number | null,
+    verifications: null as number | null,
+    active_minutes: Math.round(m.activeMinutes),
+  };
+}
+
 export class DashboardProvider implements vscode.WebviewViewProvider {
   static readonly viewId = "flowIntel.dashboard";
 
   private view: vscode.WebviewView | undefined;
   private host: DashboardHost | null = null;
   private enrolled = false;
+  private enrollmentMode: "personal" | "study" | undefined;
   private statsSub: vscode.Disposable | undefined;
   private summaryTimer: NodeJS.Timeout | undefined;
   private pendingCheckin: "scheduled" | "manual" | null = null;
@@ -31,6 +54,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     private readonly ctx: vscode.ExtensionContext,
     private readonly store: ParticipantStore,
     private readonly stats: StatsHub,
+    private readonly mirror: MirrorStore,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -41,13 +65,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((msg) => this.onMessage(msg));
     view.onDidChangeVisibility(() => {
       if (view.visible) {
-        this.postState();
+        void this.postState();
         void this.postSummary();
         this.flushPending();
       }
     });
 
-    this.postState();
+    void this.postState();
     void this.postSummary();
     this.flushPending();
   }
@@ -55,11 +79,11 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   attach(host: DashboardHost): void {
     this.host = host;
     this.statsSub?.dispose();
-    this.statsSub = this.stats.onDidChange(() => this.postState());
+    this.statsSub = this.stats.onDidChange(() => void this.postState());
     if (!this.summaryTimer) {
       this.summaryTimer = setInterval(() => void this.postSummary(), SUMMARY_POLL_MS);
     }
-    this.postState();
+    void this.postState();
     void this.postSummary();
   }
 
@@ -71,28 +95,26 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
       clearInterval(this.summaryTimer);
       this.summaryTimer = undefined;
     }
-    this.postState();
+    void this.postState();
   }
 
   setEnrolled(v: boolean): void {
     this.enrolled = v;
-    this.postState();
+    this.enrollmentMode = this.store.enrollmentMode;
+    void this.postState();
   }
 
   refresh(): void {
-    this.postState();
+    void this.postState();
+    void this.postSummary();
   }
 
   requestCheckIn(trigger: "scheduled" | "manual"): void {
     if (!this.host) {
-      void vscode.window.showInformationMessage("Flow Intelligence: enroll first to check in.");
+      void vscode.window.showInformationMessage("Flow Intelligence: enable cloud sync to check in.");
       return;
     }
     if (trigger === "scheduled") {
-      // A scheduled prompt should be noticeable but not hijack the editor: show
-      // a dismissible notification with an action, and only reveal the survey
-      // card if the participant opts in. (The old 6s status-bar flash was easy
-      // to miss, which suppressed the scheduled response rate.)
       void vscode.window
         .showInformationMessage(
           "Flow Intelligence: got a moment to rate your current flow?",
@@ -109,7 +131,6 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 
   private deliverCheckIn(trigger: "scheduled" | "manual"): void {
     this.pendingCheckin = trigger;
-    // Reveal our view so the card is visible, then deliver it.
     void vscode.commands.executeCommand(`${DashboardProvider.viewId}.focus`);
     this.flushPending();
   }
@@ -122,20 +143,36 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   }
 
   private onMessage(msg: { type: string; [k: string]: unknown }): void {
+    void this.handleMessage(msg);
+  }
+
+  private async handleMessage(msg: { type: string; [k: string]: unknown }): Promise<void> {
     switch (msg.type) {
       case "ready":
-        this.postState();
-        void this.postSummary();
+        await this.postState();
+        await this.postSummary();
         this.flushPending();
         break;
       case "refresh":
-        void this.postSummary();
+        await this.postSummary();
         break;
       case "checkinNow":
         this.requestCheckIn("manual");
         break;
-      case "enroll":
-        void vscode.commands.executeCommand("flowIntel.enroll");
+      case "enrollPersonal":
+        void vscode.commands.executeCommand("flowIntel.enrollPersonal");
+        break;
+      case "enrollStudy":
+        void vscode.commands.executeCommand("flowIntel.enrollStudy");
+        break;
+      case "pauseSync":
+        void vscode.commands.executeCommand("flowIntel.pause");
+        break;
+      case "resumeSync":
+        void vscode.commands.executeCommand("flowIntel.resume");
+        break;
+      case "disconnectSync":
+        void vscode.commands.executeCommand("flowIntel.withdraw");
         break;
       case "esm":
         if (this.host && typeof msg.flow === "number") {
@@ -150,20 +187,40 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private postState(): void {
+  private async postState(): Promise<void> {
     if (!this.view) return;
+    let mirror;
+    try {
+      mirror = computeMirror(this.mirror.getInput(7));
+    } catch (err) {
+      mirror = {
+        key: "warming_up",
+        name: "Warming up",
+        tagline: "Local analytics are loading.",
+        blurb: `Persona unavailable: ${String(err)}`,
+        signature: [],
+        ready: false,
+        aiReliance: 0,
+        focusContinuity: 0,
+      };
+    }
+    this.enrollmentMode = this.store.enrollmentMode;
     this.view.webview.postMessage({
       type: "state",
       enrolled: this.enrolled,
+      enrollmentMode: this.enrollmentMode ?? null,
       running: this.host !== null && this.store.enabled,
       paused: this.host !== null && !this.store.enabled,
       sessionActive: this.host !== null && this.host.currentSession() !== null,
       live: this.stats.snapshot(),
+      overall: localOverall(this.mirror),
+      mirror,
     });
   }
 
   private async postSummary(): Promise<void> {
-    if (!this.view || !this.host) return;
+    if (!this.view) return;
+    if (!this.enrolled) return;
     const summary = await fetchSummary(this.store);
     if (summary) this.view.webview.postMessage({ type: "summary", summary });
   }

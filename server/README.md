@@ -6,7 +6,7 @@ functions; RLS denies direct client access.
 
 ## Layout
 
-- `supabase/migrations/` — SQL schema (`0001_init.sql`).
+- `supabase/migrations/` — SQL schema (`0001_init.sql`, `0002_personal_mode.sql`).
 - `supabase/functions/enroll/` — issues a per-participant ingest token against a study code.
 - `supabase/functions/ingest/` — authenticates the token and stores events + ESM responses.
 - `supabase/functions/_shared/` — CORS, token hashing, payload sanitation.
@@ -16,21 +16,24 @@ functions; RLS denies direct client access.
 
 1. Install the Supabase CLI and log in: `supabase login`.
 2. Link (or create) a project: `supabase link --project-ref <ref>`.
-3. Apply the schema:
+3. Apply migrations (includes the always-on `PERSONAL` code for public cloud sync):
 
 ```bash
 supabase db push
 ```
 
-4. Seed at least one study code by running SQL in the Supabase dashboard.
-   Keep your real code out of version control — pick your own value:
+   For IRB study cohorts, seed a **private** study code separately (keep it out of
+   version control):
 
 ```sql
 insert into study_codes (code, label, active, max_participants)
-values ('<YOUR-STUDY-CODE>', 'Pilot cohort', true, 30);
+values ('<YOUR-STUDY-CODE>', 'IRB cohort', true, 30);
 ```
 
-5. Deploy the functions:
+   Personal users enroll with `mode: personal` (no code). Study participants use
+   `mode: study` + your private code.
+
+4. Deploy the functions:
 
 ```bash
 supabase functions deploy enroll
@@ -43,7 +46,8 @@ managed environment automatically.
 
 ## Functions
 
-- `enroll` — issues a per-participant ingest token against a study code.
+- `enroll` — issues a per-participant ingest token. `mode: personal` (public, no
+  code) or `mode: study` (private study code + cap).
 - `ingest` — authenticates the token and stores events + ESM responses.
 - `summary` — participant self-serve read path for the dashboard: returns
   aggregated, metadata-only stats (AI vs human collaboration, event counts,

@@ -1,8 +1,8 @@
 {
   "name": "flow-intelligence",
   "displayName": "Flow Intelligence",
-  "description": "Research telemetry for understanding human-AI collaboration flow in Cursor. Metadata only; no code or prompt text is ever collected.",
-  "version": "0.1.8",
+  "description": "Personal AI usage analytics for developers. Metadata only; no code or prompt text is ever collected. Local Mirror works without signup; optional cloud sync for measured AI attribution and flow check-ins.",
+  "version": "0.3.1",
   "publisher": "flow-intelligence",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -41,7 +41,9 @@
       ]
     },
     "commands": [
-      { "command": "flowIntel.enroll", "title": "Flow Intelligence: Enroll in Study" },
+      { "command": "flowIntel.enroll", "title": "Flow Intelligence: Get Started (cloud sync)" },
+      { "command": "flowIntel.enrollPersonal", "title": "Flow Intelligence: Enable Cloud Sync (Personal)" },
+      { "command": "flowIntel.enrollStudy", "title": "Flow Intelligence: Enter Study Code" },
       { "command": "flowIntel.open", "title": "Flow Intelligence: Open Dashboard" },
       { "command": "flowIntel.checkIn", "title": "Flow Intelligence: Flow Check-in" },
       { "command": "flowIntel.status", "title": "Flow Intelligence: Show Status" },
@@ -93,7 +95,10 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package:local": "npm run compile && npx @vscode/vsce package --allow-missing-repository --allow-package-all-secrets",
+    "publish:ovsx": "npm run package:local && npx ovsx publish flow-intelligence-$(node -p \"require('./package.json').version\").vsix",
+    "sync:cursor": "bash scripts/sync-to-cursor.sh"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

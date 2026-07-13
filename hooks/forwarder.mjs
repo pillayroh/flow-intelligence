@@ -63,16 +63,47 @@ async function main() {
   const payload = buildPayload(eventType, input);
   payload.agent = agent;
 
-  const event = {
+  const events = [{
     ts: new Date().toISOString(),
     source: "hook",
     event_type: eventType,
     session_id: config.session_id || null,
     payload,
-  };
+  }];
 
-  await postEvents(config, [event]).catch(() => {});
+  // Cursor often routes agent file changes through postToolUse (Edit/Write) rather
+  // than afterFileEdit alone. Emit a companion agent_edit so Overall gets chars.
+  if (eventType === "tool_post") {
+    const toolName = pick(input, ["tool_name", "toolName", "name"]);
+    if (isEditTool(toolName)) {
+      const edit = editPayload(input);
+      if (edit.added_chars > 0 || edit.removed_chars > 0) {
+        events.push({
+          ts: new Date().toISOString(),
+          source: "hook",
+          event_type: "agent_edit",
+          session_id: config.session_id || null,
+          payload: { ...edit, agent },
+        });
+      }
+    }
+  }
+
+  const ok = await postEvents(config, events).catch(() => false);
+  if (!ok) logIngestFailure(eventType);
   return exitAllow();
+}
+
+function isEditTool(name) {
+  if (typeof name !== "string") return false;
+  const n = name.toLowerCase();
+  return /edit|write|replace|patch|multiedit|str_replace|apply_patch/.test(n);
+}
+
+function logIngestFailure(eventType) {
+  try {
+    appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ingest_failed event=${eventType}\n`);
+  } catch { /* ignore */ }
 }
 
 /* --------------------------------------------------------------------------
@@ -265,11 +296,28 @@ function postEvents(config, events) {
         timeout: 4000,
       },
       (res) => {
-        res.resume();
-        res.on("end", resolve);
+        let data = "";
+        res.on("data", (c) => { data += c; });
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(true);
+          else {
+            try {
+              appendFileSync(
+                DEBUG_LOG,
+                `${new Date().toISOString()} ingest_http_${res.statusCode} event_batch=${events.length} body=${data.slice(0, 120)}\n`,
+              );
+            } catch { /* ignore */ }
+            resolve(false);
+          }
+        });
       },
     );
-    req.on("error", reject);
+    req.on("error", (err) => {
+      try {
+        appendFileSync(DEBUG_LOG, `${new Date().toISOString()} ingest_error ${String(err)}\n`);
+      } catch { /* ignore */ }
+      reject(err);
+    });
     req.on("timeout", () => {
       req.destroy();
       reject(new Error("timeout"));

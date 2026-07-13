@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { initLogger, log } from "./logger";
 import { ParticipantStore, patchForwarderConfig } from "./config";
-import { enroll } from "./enrollment";
+import { enroll, enrollPersonal, enrollStudy } from "./enrollment";
+import { maybeNudgeCloudSync } from "./cloudSyncNudge";
 import { Transport } from "./transport";
 import { SessionManager } from "./session";
 import { Recorder } from "./recorder";
@@ -10,38 +11,57 @@ import { EsmSampler } from "./esm/sampler";
 import { installHooks, uninstallHooks } from "./hooksBootstrap";
 import { installClaudeHooks, uninstallClaudeHooks } from "./claudeBootstrap";
 import { StatsHub } from "./stats";
+import { MirrorStore } from "./mirror/store";
 import { DashboardProvider, DashboardHost } from "./panel/dashboard";
 import { EsmResponse } from "./types";
 
 let runtime: Runtime | undefined;
 
-// Owns the live collection pipeline. Also acts as the dashboard host so the
-// webview can read the current session and submit flow check-ins.
+// Owns the collection pipeline. The behavioral pipeline (sessions, edits, focus,
+// git) runs locally for everyone so the AI Collaboration Mirror works without
+// enrollment. Uploading to the research backend and the ESM sampler are gated
+// on enrollment via setEnrolled(). Also acts as the dashboard host.
 class Runtime implements DashboardHost {
   transport: Transport;
   sessions: SessionManager;
   sampler: EsmSampler;
   private disposables: vscode.Disposable[] = [];
+  private samplerRunning = false;
 
   constructor(
     private readonly ctx: vscode.ExtensionContext,
     private readonly store: ParticipantStore,
     stats: StatsHub,
     private readonly dashboard: DashboardProvider,
+    mirror: MirrorStore,
   ) {
     this.transport = new Transport(ctx, store, () => this.sessions.sessionForReport(), stats);
-    this.sessions = new SessionManager(ctx, this.transport);
+    this.sessions = new SessionManager(ctx, this.transport, mirror);
     const recorder = new Recorder(this.transport, this.sessions);
     this.sampler = new EsmSampler(ctx, store, this.sessions, this.dashboard);
     this.disposables.push(...registerTelemetry(recorder, this.sessions));
   }
 
+  // Local mode: behavioral collection + Mirror only. No upload, no ESM prompts.
   start(): void {
     this.transport.start();
     this.sessions.start();
-    this.sampler.start();
     this.dashboard.attach(this);
-    log("collection started");
+    log("local collection started");
+  }
+
+  // Toggle research participation: uploading + the scheduled ESM sampler.
+  setEnrolled(enrolled: boolean): void {
+    this.transport.setUploadEnabled(enrolled);
+    if (enrolled && !this.samplerRunning) {
+      this.sampler.start();
+      this.samplerRunning = true;
+      log("research upload + ESM sampler enabled");
+    } else if (!enrolled && this.samplerRunning) {
+      this.sampler.stop();
+      this.samplerRunning = false;
+      log("research upload + ESM sampler disabled");
+    }
   }
 
   currentSession() {
@@ -78,20 +98,32 @@ class Runtime implements DashboardHost {
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   initLogger();
-  const store = new ParticipantStore(ctx);
-  const stats = new StatsHub();
-  ctx.subscriptions.push({ dispose: () => stats.dispose() });
+  try {
+    await activateExtension(ctx);
+  } catch (err) {
+    log(`activation failed: ${String(err)}`);
+    void vscode.window.showErrorMessage(
+      `Flow Intelligence failed to start: ${String(err)}. See Output → Flow Intelligence.`,
+    );
+  }
+}
 
-  const dashboard = new DashboardProvider(ctx, store, stats);
+async function activateExtension(ctx: vscode.ExtensionContext): Promise<void> {
+  const store = new ParticipantStore(ctx);
+  const mirror = new MirrorStore(ctx);
+  const stats = new StatsHub(mirror);
+  ctx.subscriptions.push({ dispose: () => stats.dispose() });
+  ctx.subscriptions.push({ dispose: () => mirror.flush() });
+
+  const dashboard = new DashboardProvider(ctx, store, stats, mirror);
   ctx.subscriptions.push(
     vscode.window.registerWebviewViewProvider(DashboardProvider.viewId, dashboard, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 
-  // Always-visible entry point in the bottom status bar. A click opens the
-  // dashboard directly (the common case); full options live in the Command
-  // Palette under "Flow Intelligence:" and the dashboard itself.
+  // Always-visible entry point in the bottom status bar. Always opens the
+  // dashboard — cloud sync is offered inside the panel, not via the status bar.
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = "flowIntel.open";
   ctx.subscriptions.push(statusBar);
@@ -100,18 +132,26 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     const enrolled = await store.isEnrolled();
     dashboard.setEnrolled(enrolled);
     dashboard.refresh();
+    statusBar.command = "flowIntel.open";
     if (!enrolled) {
-      statusBar.text = "$(sign-in) Flow: enroll";
-      statusBar.tooltip = "Enroll in the Flow Intelligence study";
+      statusBar.text = "$(cloud-upload) Flow: sync";
+      statusBar.tooltip =
+        "Local Mirror is active. Click to open the dashboard and enable cloud sync.";
     } else if (store.enabled) {
-      statusBar.text = "$(pulse) Flow";
-      statusBar.tooltip = "Flow Intelligence is running in the background (metadata only). Click for options.";
+      const mode = store.enrollmentMode === "study" ? "study" : "cloud";
+      statusBar.text = "$(cloud) Flow";
+      statusBar.tooltip = `Flow Intelligence syncing (${mode}, metadata only). Click for dashboard.`;
     } else {
       statusBar.text = "$(circle-slash) Flow paused";
-      statusBar.tooltip = "Flow Intelligence collection is paused. Click for options.";
+      statusBar.tooltip = "Flow Intelligence cloud sync is paused. Click for dashboard.";
     }
     statusBar.show();
   };
+
+  // The local pipeline (behavioral collection + Mirror) runs for everyone,
+  // enrolled or not, so the 900+ installs get value without a study code.
+  runtime = new Runtime(ctx, store, stats, dashboard, mirror);
+  runtime.start();
 
   const startIfEnrolled = async () => {
     if (!(await store.isEnrolled())) return;
@@ -124,22 +164,46 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     } catch (err) {
       log(`hook self-heal failed: ${String(err)}`);
     }
-    if (!runtime) {
-      runtime = new Runtime(ctx, store, stats, dashboard);
-      runtime.start();
-    }
+    runtime?.setEnrolled(true);
   };
 
-  const openDashboard = () =>
-    void vscode.commands.executeCommand(`${DashboardProvider.viewId}.focus`);
+  const openDashboard = async () => {
+    // Reveal the activity-bar container first so the webview is actually visible.
+    await vscode.commands.executeCommand("workbench.view.extension.flowIntel");
+    await vscode.commands.executeCommand(`${DashboardProvider.viewId}.focus`);
+  };
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand("flowIntel.enroll", async () => {
       if (await store.isEnrolled()) {
-        vscode.window.showInformationMessage("Flow Intelligence: already enrolled.");
+        vscode.window.showInformationMessage("Flow Intelligence: already syncing to the cloud.");
         return;
       }
       if (await enroll(ctx, store)) {
+        await startIfEnrolled();
+        await refreshStatus();
+        openDashboard();
+      }
+    }),
+
+    vscode.commands.registerCommand("flowIntel.enrollPersonal", async () => {
+      if (await store.isEnrolled()) {
+        vscode.window.showInformationMessage("Flow Intelligence: cloud sync is already enabled.");
+        return;
+      }
+      if (await enrollPersonal(ctx, store)) {
+        await startIfEnrolled();
+        await refreshStatus();
+        openDashboard();
+      }
+    }),
+
+    vscode.commands.registerCommand("flowIntel.enrollStudy", async () => {
+      if (await store.isEnrolled()) {
+        vscode.window.showInformationMessage("Flow Intelligence: cloud sync is already enabled.");
+        return;
+      }
+      if (await enrollStudy(ctx, store)) {
         await startIfEnrolled();
         await refreshStatus();
         openDashboard();
@@ -169,22 +233,23 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
     vscode.commands.registerCommand("flowIntel.withdraw", async () => {
       const confirm = await vscode.window.showWarningMessage(
-        "Withdraw from the Flow Intelligence study? This stops all collection and removes the hooks.",
+        "Stop cloud sync and remove AI hooks? Your local Mirror keeps working on-device.",
         { modal: true },
-        "Withdraw",
+        "Stop cloud sync",
       );
-      if (confirm !== "Withdraw") return;
-      await store.setEnabled(false);
+      if (confirm !== "Stop cloud sync") return;
       patchForwarderConfig({ enabled: false });
       uninstallHooks();
       uninstallClaudeHooks();
-      if (runtime) {
-        await runtime.dispose();
-        runtime = undefined;
-      }
+      runtime?.setEnrolled(false);
       await store.clearToken();
+      await store.clearParticipantId();
+      await store.clearEnrollmentMode();
+      await store.setEnabled(true);
       await refreshStatus();
-      vscode.window.showInformationMessage("Flow Intelligence: you have withdrawn. Thank you.");
+      vscode.window.showInformationMessage(
+        "Flow Intelligence: cloud sync stopped. Your local Mirror still works.",
+      );
     }),
 
     vscode.commands.registerCommand("flowIntel.status", async () => {
@@ -213,15 +278,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   await startIfEnrolled();
   await refreshStatus();
-
-  if (!(await store.isEnrolled())) {
-    const choice = await vscode.window.showInformationMessage(
-      "Flow Intelligence study is installed. Enroll to start contributing anonymized flow data?",
-      "Enroll",
-      "Later",
-    );
-    if (choice === "Enroll") void vscode.commands.executeCommand("flowIntel.enroll");
-  }
+  await maybeNudgeCloudSync(ctx, store);
 }
 
 export async function deactivate(): Promise<void> {

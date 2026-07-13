@@ -15,6 +15,10 @@ export class Transport {
   private esm: EsmResponse[] = [];
   private timer: NodeJS.Timeout | undefined;
   private flushing = false;
+  // Off until the participant is enrolled. When off, events still feed the live
+  // stats/Mirror (via enqueue -> stats.observe) but are never buffered, persisted,
+  // or uploaded. This lets the local product experience run with no enrollment.
+  private uploadEnabled = false;
   private readonly bufferFile: string;
 
   constructor(
@@ -35,22 +39,31 @@ export class Transport {
     this.timer = setInterval(() => void this.flush(), intervalMs);
   }
 
+  // Enables/disables uploading to the research backend. Called with true on
+  // enrollment and false on withdrawal.
+  setUploadEnabled(v: boolean): void {
+    this.uploadEnabled = v;
+    if (v) void this.flush();
+  }
+
   enqueue(event: TelemetryEvent): void {
-    // Feed the live dashboard regardless of upload state.
+    // Feed the live dashboard/Mirror regardless of upload state.
     this.stats.observe(event);
-    if (!this.store.enabled) return;
+    if (!this.uploadEnabled || !this.store.enabled) return;
     this.events.push(event);
     if (this.events.length > MAX_BUFFER) this.events.splice(0, this.events.length - MAX_BUFFER);
   }
 
   enqueueEsm(resp: EsmResponse): void {
     this.stats.observeEsm(resp);
+    if (!this.uploadEnabled) return;
     // ESM labels are precious; keep them even if collection is paused.
     this.esm.push(resp);
     void this.flush();
   }
 
   async flush(): Promise<void> {
+    if (!this.uploadEnabled) return;
     if (this.flushing) return;
     if (this.events.length === 0 && this.esm.length === 0) return;
 

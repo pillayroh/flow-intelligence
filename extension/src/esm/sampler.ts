@@ -44,7 +44,15 @@ export class EsmSampler {
   }
 
   start(): void {
+    this.stop();
     this.timer = setInterval(() => this.tick(), 60_000);
+  }
+
+  stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
   }
 
   private resetTarget(): void {
@@ -90,6 +98,6 @@ export class EsmSampler {
   }
 
   dispose(): void {
-    if (this.timer) clearInterval(this.timer);
+    this.stop();
   }
 }

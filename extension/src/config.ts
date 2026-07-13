@@ -5,10 +5,12 @@ import * as path from "node:path";
 import { ForwarderConfig } from "./types";
 import { log } from "./logger";
 
-export const CONSENT_VERSION = "1.0";
+export const CONSENT_VERSION_STUDY = "1.0";
+export const CONSENT_VERSION_PERSONAL = "2.0-personal";
 
 const TOKEN_SECRET_KEY = "flowIntel.ingestToken";
 const PARTICIPANT_ID_KEY = "flowIntel.participantId";
+const ENROLLMENT_MODE_KEY = "flowIntel.enrollmentMode";
 const ENABLED_KEY = "flowIntel.enabled";
 
 export interface Settings {
@@ -91,6 +93,19 @@ export class ParticipantStore {
   }
   async setParticipantId(id: string): Promise<void> {
     await this.ctx.globalState.update(PARTICIPANT_ID_KEY, id);
+  }
+  async clearParticipantId(): Promise<void> {
+    await this.ctx.globalState.update(PARTICIPANT_ID_KEY, undefined);
+  }
+
+  get enrollmentMode(): "personal" | "study" | undefined {
+    return this.ctx.globalState.get<"personal" | "study">(ENROLLMENT_MODE_KEY);
+  }
+  async setEnrollmentMode(mode: "personal" | "study"): Promise<void> {
+    await this.ctx.globalState.update(ENROLLMENT_MODE_KEY, mode);
+  }
+  async clearEnrollmentMode(): Promise<void> {
+    await this.ctx.globalState.update(ENROLLMENT_MODE_KEY, undefined);
   }
 
   get enabled(): boolean {

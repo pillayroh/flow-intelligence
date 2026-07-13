@@ -1,9 +1,14 @@
 // POST /functions/v1/enroll
-// Body: { study_code, consent_version, editor_version?, platform?, primary_ai_tool? }
-// Returns: { participant_id, ingest_token }
+// Body: {
+//   mode?: "personal" | "study",   // default "study" for backwards compat
+//   study_code?,                   // required when mode=study
+//   consent_version,
+//   editor_version?, platform?, primary_ai_tool?
+// }
+// Returns: { participant_id, ingest_token, enrollment_mode }
 //
-// Validates the study code, enforces an optional participant cap, issues an
-// opaque ingest token (storing only its hash), and creates the participant row.
+// Personal mode enrolls against the always-on PERSONAL study code (no user-
+// entered code). Study mode validates a private researcher-issued code.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { json, preflight } from "../_shared/cors.ts";
@@ -11,6 +16,7 @@ import { generateToken, sha256Hex } from "../_shared/token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const PERSONAL_CODE = "PERSONAL";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
@@ -23,10 +29,22 @@ Deno.serve(async (req) => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  const studyCode = String(body.study_code ?? "").trim();
+  const mode = String(body.mode ?? "study").trim();
+  if (mode !== "personal" && mode !== "study") {
+    return json({ error: "invalid_mode" }, 400);
+  }
+
   const consentVersion = String(body.consent_version ?? "").trim();
-  if (!studyCode || !consentVersion) {
-    return json({ error: "missing_study_code_or_consent_version" }, 400);
+  if (!consentVersion) {
+    return json({ error: "missing_consent_version" }, 400);
+  }
+
+  const studyCode =
+    mode === "personal"
+      ? PERSONAL_CODE
+      : String(body.study_code ?? "").trim();
+  if (!studyCode) {
+    return json({ error: "missing_study_code" }, 400);
   }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -62,6 +80,7 @@ Deno.serve(async (req) => {
       study_code: studyCode,
       token_hash: tokenHash,
       consent_version: consentVersion,
+      enrollment_mode: mode,
       editor_version: strOrNull(body.editor_version),
       platform: strOrNull(body.platform),
       primary_ai_tool: strOrNull(body.primary_ai_tool),
@@ -74,6 +93,7 @@ Deno.serve(async (req) => {
   return json({
     participant_id: participant.participant_id,
     ingest_token: token,
+    enrollment_mode: mode,
   });
 });
 
