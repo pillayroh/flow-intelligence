@@ -1,13 +1,83 @@
 # Flow Intelligence
 
-A research instrument for studying **human-AI collaboration flow** during
-software development in Cursor. It collects behavioral signals, AI-interaction
-signals, and flow self-reports (ESM labels) as a **metadata-only**, anonymized
-event stream to power the study's research questions (RQ1: model flow; RQ2: AI's
-effect on performance/cognition).
+A research instrument for studying **developer flow** and **human-AI collaboration**
+during real software work in Cursor and VS Code. The extension runs in the editor,
+passively observes how someone codes and interacts with AI tools, and occasionally
+asks brief flow check-ins. Everything collected is **metadata only** (counts, sizes,
+timings, categories) and **anonymized**.
 
 > Privacy posture: no prompt text, no code, no file contents, no raw paths or
-> commands are ever collected — only sizes, counts, categories, and timing.
+> commands are ever collected.
+
+## Research questions
+
+**RQ1 — Can we model flow from passive signals?**
+
+Developers often know when they are "in flow," but that state is hard to measure
+from the outside. Traditional proxies (commits, lines of code, time at desk) miss
+the cognitive side. RQ1 asks whether flow can be *predicted or explained* from
+passively observed behavior during a coding session: edit rhythm, focus switches,
+session length, AI usage patterns, and similar signals. The ground truth is the
+developer's own rating, collected through short in-editor check-ins (see Methods).
+
+**RQ2 — How does human-AI collaboration relate to flow?**
+
+AI assistants change *how* code gets written, not just how much. RQ2 asks how
+collaboration *style* relates to self-reported flow, confidence, and frustration.
+For example: does someone who delegates large edits to the agent and verifies
+with tests report different flow than someone who accepts many small Tab
+completions? We look at the mix of human vs. AI contribution, prompt frequency,
+edit acceptance sizes, and verification behavior (e.g. running tests after an
+AI edit), then relate those patterns to ESM check-in scores.
+
+## Methods
+
+### What we observe (passive telemetry)
+
+Two complementary signal streams, merged into one anonymized event log:
+
+| Stream | Examples | Used for |
+|--------|----------|----------|
+| **Editor behavior** | Active/idle time, focus switches, edit burst sizes, git activity, diagnostics churn | RQ1, context for RQ2 |
+| **AI interaction** | Prompt frequency/length, agent edit sizes, Tab accepts, tool use, shell command *category* | RQ2, features for RQ1 |
+
+On platforms where AI tools expose direct instrumentation (Cursor agent/Tab,
+Claude Code), AI attribution is **measured**. Elsewhere it is **estimated** from
+behavioral heuristics; both are stored and labeled so analysis can treat them
+differently.
+
+### Ground truth (experience sampling)
+
+Short, activity-gated **flow check-ins** ask the developer to rate current
+**flow**, and optionally **frustration** and **confidence**, on 1–5 scales.
+These self-reports are the *labels* for RQ1 and the *outcomes* for RQ2.
+Check-ins appear after sustained coding activity and can also be triggered manually.
+
+### Privacy and consent
+
+- **Metadata only, never content.** Only numeric and categorical fields are
+  transmitted; the server rejects payloads containing free text or forbidden keys.
+- **Anonymous.** Participants are identified by a random UUID, not name or email.
+- **Consent-gated.** Cloud collection begins only after an explicit in-editor
+  consent screen and enrollment (Personal opt-in or Study code).
+- **Withdrawable.** Participants can pause or withdraw at any time; withdrawal
+  stops all collection.
+
+See [`docs/consent.md`](docs/consent.md) for the full consent language.
+
+### Analysis approach (planned)
+
+1. **RQ1:** Aggregate passive signals over rolling windows (session, hour, day);
+   train regressors/classifiers to predict ESM flow scores; evaluate which signal
+   families carry the most predictive power.
+2. **RQ2:** Derive collaboration features (human/AI char share, delegation vs.
+   verification ratio, time-to-validate after AI edits); correlate and model
+   against flow, frustration, and confidence ratings.
+3. **Personas (future):** Cluster participants by aggregated signal profiles once
+   cohort size supports it.
+
+Full signal list: [`docs/signal-catalog.md`](docs/signal-catalog.md).
+Event schema: [`docs/event-schema.md`](docs/event-schema.md).
 
 ## Architecture
 
