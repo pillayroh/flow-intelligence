@@ -18,6 +18,7 @@ export interface DashboardHost {
 }
 
 const SUMMARY_POLL_MS = 45_000;
+const LIVE_REFRESH_MS = 2_000;
 
 function localOverall(mirror: MirrorStore) {
   const m = mirror.getInput(7);
@@ -48,6 +49,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   private enrollmentMode: "personal" | "study" | undefined;
   private statsSub: vscode.Disposable | undefined;
   private summaryTimer: NodeJS.Timeout | undefined;
+  private liveRefreshTimer: NodeJS.Timeout | undefined;
   private pendingCheckin: "scheduled" | "manual" | null = null;
 
   constructor(
@@ -58,6 +60,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    if (this.liveRefreshTimer) {
+      clearInterval(this.liveRefreshTimer);
+      this.liveRefreshTimer = undefined;
+    }
     this.view = view;
     view.webview.options = { enableScripts: true, localResourceRoots: [this.ctx.extensionUri] };
     view.webview.html = getHtml(view.webview, this.ctx.extensionUri);
@@ -70,6 +76,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
         this.flushPending();
       }
     });
+
+    this.liveRefreshTimer = setInterval(() => {
+      if (view.visible) void this.postState();
+    }, LIVE_REFRESH_MS);
 
     void this.postState();
     void this.postSummary();
@@ -228,5 +238,6 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   dispose(): void {
     this.statsSub?.dispose();
     if (this.summaryTimer) clearInterval(this.summaryTimer);
+    if (this.liveRefreshTimer) clearInterval(this.liveRefreshTimer);
   }
 }

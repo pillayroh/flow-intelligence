@@ -46,15 +46,23 @@ export class StatsHub {
   // Mirror can reflect a trailing multi-day window.
   constructor(private readonly mirror?: MirrorStore) {}
 
+  // Incremental typing totals for the live "This session" dashboard. Edit bursts
+  // are still emitted on a timer for telemetry, but char counts update immediately.
+  addTypingDelta(added: number, removed: number, language?: string): void {
+    if (added <= 0 && removed <= 0) return;
+    this.human.added_chars += added;
+    this.human.removed_chars += removed;
+    this.addLanguage(language, added);
+    this.fire();
+  }
+
   observe(event: TelemetryEvent): void {
     this.byType[event.event_type] = (this.byType[event.event_type] ?? 0) + 1;
     const p = event.payload as Record<string, number>;
     switch (event.event_type) {
       case "edit_burst":
         this.human.edit_bursts += 1;
-        this.human.added_chars += n(p.added_chars);
-        this.human.removed_chars += n(p.removed_chars);
-        this.addLanguage(event.payload.language, n(p.added_chars));
+        // Chars are applied live via addTypingDelta(); mirror still rolls up bursts.
         this.mirror?.addTyped(n(p.added_chars), n(p.removed_chars), event.payload.language);
         break;
       case "edit_insert":

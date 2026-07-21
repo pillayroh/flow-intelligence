@@ -39,7 +39,7 @@ class Runtime implements DashboardHost {
     this.sessions = new SessionManager(ctx, this.transport, mirror);
     const recorder = new Recorder(this.transport, this.sessions);
     this.sampler = new EsmSampler(ctx, store, this.sessions, this.dashboard);
-    this.disposables.push(...registerTelemetry(recorder, this.sessions));
+    this.disposables.push(...registerTelemetry(recorder, this.sessions, stats));
   }
 
   // Local mode: behavioral collection + Mirror only. No upload, no ESM prompts.

@@ -2,7 +2,7 @@
   "name": "flow-intelligence",
   "displayName": "Flow Intelligence",
   "description": "Personal AI usage analytics for developers. Metadata only; no code or prompt text is ever collected. Local Mirror works without signup; optional cloud sync for measured AI attribution and flow check-ins.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "flow-intelligence",
   "license": "MIT",
   "icon": "resources/icon.png",
